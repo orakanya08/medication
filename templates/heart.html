@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href='https://fonts.googleapis.com/css?family=Sarabun' rel='stylesheet'>
+
+    <title>อัปโหลดหรือถ่ายภาพเพื่อประมวลผลสำหรับโรคหัวใจ</title>
+    <style>
+        body {
+            font-family: 'Sarabun';
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #F7418F, #FEC7B4);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        .center-image {
+            max-width: 75px;
+            /* ปรับขนาดรูปตามที่ต้องการ */
+            height: auto;
+            /* รักษาสัดส่วน */
+            margin-bottom: 20px;
+            /* เพิ่มระยะห่างด้านล่าง */
+        }
+
+
+        h1,
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+
+        input[type="file"],
+        input[type="submit"],
+        button {
+            display: block;
+            margin: 15px auto;
+            padding: 10px 20px;
+            border-radius: 25px;
+        }
+
+        input[type="submit"],
+        button {
+            background-color: #FC819E;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        input[type="submit"]:hover,
+        button:hover {
+            background-color: #FEC7B4;
+        }
+
+        video {
+            display: block;
+            margin: 20px auto;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 576px) {
+            .container {
+                width: 95%;
+            }
+
+            .button-group button {
+                width: 100%;
+            }
+
+            video {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <img src="{{ url_for('static', path='images/logo.png') }}" alt="logo" class="center-image">
+        <h1 style="font-weight: bold; color: #333; text-align: center;">สำหรับโรคหัวใจ</h1>
+        <p style="text-align: center; color: #555;">อัปโหลดหรือถ่ายภาพเพื่อประมวลผล</p>
+        <form action="/upload/" enctype="multipart/form-data" method="post">
+            <input name="file" class="form-control mt-3" type="file" required>
+            <input type="submit" value="อัปโหลด">
+        </form>
+
+        <video id="video" autoplay></video>
+        <div class="button-group">
+            <button id="toggle-camera">เปิดกล้อง</button>
+            <button id="capture">ถ่ายภาพ</button>
+            <button id="switch-camera">สลับกล้อง</button>
+        </div>
+        <canvas id="canvas"></canvas>
+        <form id="capture-form" action="/upload/" enctype="multipart/form-data" method="post">
+            <input id="captured-image" name="file" type="hidden">
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+        crossorigin="anonymous"></script>
+</body>
+
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captureButton = document.getElementById('capture');
+    const toggleCameraButton = document.getElementById('toggle-camera');
+    const switchCameraButton = document.getElementById('switch-camera');
+    const captureForm = document.getElementById('capture-form');
+    const capturedImageInput = document.getElementById('captured-image');
+    let stream = null;
+    let currentStreamTrack = null;
+    let currentCamera = 'user';
+
+    let videoDevices = [];
+    let currentDevice = null;
+
+    async function getAvailableCameras() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter(device => device.kind === 'videoinput');
+            currentDevice = videoDevices.find(device => device.label.includes(currentCamera === 'user' ? 'front' : 'back')) || videoDevices[0];
+        } catch (err) {
+            console.error('Error fetching cameras:', err);
+        }
+    }
+
+    async function startCamera() {
+        if (!currentDevice) return;
+        try {
+            const constraints = {
+                video: {
+                    deviceId: { exact: currentDevice.deviceId }
+                }
+            };
+            if (stream) stopCamera();
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            currentStreamTrack = stream.getVideoTracks()[0];
+        } catch (err) {
+            console.error('Error accessing webcam:', err);
+        }
+    }
+
+    function stopCamera() {
+        if (stream) {
+            const tracks = stream.getTracks();
+            tracks.forEach(track => track.stop());
+            video.srcObject = null;
+            stream = null;
+            currentStreamTrack = null;
+        }
+    }
+
+    toggleCameraButton.addEventListener('click', () => {
+        if (stream) {
+            stopCamera();
+            toggleCameraButton.textContent = 'เปิดกล้อง';
+        } else {
+            startCamera();
+            toggleCameraButton.textContent = 'ปิดกล้อง';
+        }
+    });
+
+    switchCameraButton.addEventListener('click', async () => {
+        currentCamera = currentCamera === 'user' ? 'environment' : 'user';
+        await getAvailableCameras();
+        startCamera();
+    });
+
+    captureButton.addEventListener('click', () => {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+            const file = new File([blob], "captured_image.png", { type: 'image/png' });
+            const formData = new FormData();
+            formData.append('file', file);
+            fetch('/upload/', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.text())
+                .then(result => document.write(result))
+                .catch(error => console.error('Error:', error));
+        });
+    });
+
+    getAvailableCameras().then(() => startCamera());
+</script>
+
+</html>
